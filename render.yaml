@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: kanshan-knowledge-agent-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install .
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: ZHIHU_ACCESS_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        sync: false
+      - key: MODEL_NAME
+        sync: false
+      - key: FRONTEND_ORIGINS
+        sync: false
