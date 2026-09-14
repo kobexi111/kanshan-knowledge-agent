@@ -132,11 +132,11 @@ main { min-height: 100vh; padding: 48px 24px; }
 .recommendation-grid span { display: -webkit-box; margin-top: 8px; overflow: hidden; color: var(--muted); font-size: 13px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .recent-history { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
 .recent-history h3 { margin: 0 0 12px; font-size: 16px; }
-.recent-history > div { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 18px; }
-.recent-history a { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 9px; color: var(--foreground); background: #f7f9fc; text-decoration: none; }
+.recent-history > div { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; }
+.recent-history a { display: flex; min-width: 0; max-width: 100%; justify-content: space-between; gap: 12px; padding: 10px 12px; overflow: hidden; border-radius: 9px; color: var(--foreground); background: #f7f9fc; text-decoration: none; }
 .recent-history a:hover { color: var(--primary); background: #eef5ff; }
-.recent-history span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.recent-history small { flex: none; color: var(--muted); }
+.recent-history span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-history small { flex: 0 1 42%; min-width: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; text-align: right; }
 .personal-empty { display: flex; min-height: 132px; align-items: center; justify-content: center; padding: 24px; border: 1px dashed #c9d7e9; border-radius: 13px; color: var(--muted); background: #f8fbff; text-align: center; flex-direction: column; }
 .personal-empty strong { margin-bottom: 7px; color: #475467; }
 .personal-empty.compact { display: flex; grid-column: 1 / -1; min-height: 86px; }

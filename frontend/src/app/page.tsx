@@ -359,7 +359,6 @@ export default function Home() {
                   <a key={item.url} href={item.url} target="_blank" rel="noreferrer" onClick={() => openRecommendation(item)}>
                     <small>{item.stage === "related" ? "相关内容" : stageLabels[item.stage]} · {item.topic}</small>
                     <strong>{item.title}</strong>
-                    <span>{item.reason}</span>
                   </a>
                 ))}
               </div>
