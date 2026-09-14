@@ -1,4 +1,4 @@
-import type { LearningRouteResponse, RouteStageName, RouteStep } from "@/types/route";
+import type { RouteStageName } from "@/types/route";
 
 export interface BrowsingItem {
   url: string;
@@ -27,7 +27,7 @@ export interface PersonalizationData {
 const emptyData = (): PersonalizationData => ({ history: [], candidates: [] });
 
 function storageKey(profileId: string) {
-  return `kanshan-personalization-v1:${profileId}`;
+  return `kanshan-personalization-v2:${profileId}`;
 }
 
 export function loadPersonalization(profileId: string): PersonalizationData {
@@ -57,21 +57,12 @@ export function recordView(profileId: string, item: Omit<BrowsingItem, "viewedAt
   return data;
 }
 
-export function rememberRoute(profileId: string, route: LearningRouteResponse) {
+export function rememberRecommendations(
+  profileId: string,
+  items: Array<Omit<RecommendationItem, "addedAt">>,
+) {
   const data = loadPersonalization(profileId);
-  const additions: RecommendationItem[] = [];
-  (Object.entries(route.route) as [RouteStageName, RouteStep[]][]).forEach(([stage, steps]) => {
-    steps.forEach((step) => step.materials.forEach((material) => {
-      if (material.url && !material.is_mock) additions.push({
-        url: material.url,
-        title: material.title,
-        topic: step.title,
-        reason: material.reason,
-        stage,
-        addedAt: Date.now(),
-      });
-    }));
-  });
+  const additions = items.map((item) => ({ ...item, addedAt: Date.now() }));
   const urls = new Set(additions.map((item) => item.url));
   data.candidates = [...additions, ...data.candidates.filter((item) => !urls.has(item.url))].slice(0, 120);
   save(profileId, data);

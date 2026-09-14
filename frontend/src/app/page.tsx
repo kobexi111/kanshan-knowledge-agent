@@ -8,7 +8,7 @@ import {
   loadPersonalization,
   recommendations,
   recordView,
-  rememberRoute,
+  rememberRecommendations,
   type BrowsingItem,
   type PersonalizationData,
   type RecommendationItem,
@@ -279,8 +279,8 @@ export default function Home() {
           }));
           return;
         }
-        if (streamEvent.type === "complete" && auth?.profile_id && routeRef.current) {
-          setPersonalization(rememberRoute(auth.profile_id, routeRef.current));
+        if (streamEvent.type === "recommendations" && auth?.profile_id) {
+          setPersonalization(rememberRecommendations(auth.profile_id, streamEvent.items));
         }
       }
 
@@ -392,8 +392,7 @@ export default function Home() {
           )}
         </section>
 
-        {(personalization.history.length > 0 || personalization.candidates.length > 0) && (
-          <section className="personal-section" aria-labelledby="personal-title">
+        <section className="personal-section" aria-labelledby="personal-title">
             <div className="personal-heading">
               <div>
                 <p className="eyebrow">为你推荐</p>
@@ -413,6 +412,12 @@ export default function Home() {
                 ))}
               </div>
             )}
+            {recommendations(personalization).length === 0 && (
+              <div className="personal-empty">
+                <strong>暂无个性化推荐</strong>
+                <span>生成一条学习路线后，这里会出现路线之外的相关知乎内容。</span>
+              </div>
+            )}
 
             {personalization.history.length > 0 && (
               <div className="recent-history">
@@ -427,8 +432,16 @@ export default function Home() {
                 </div>
               </div>
             )}
+            {personalization.history.length === 0 && (
+              <div className="recent-history">
+                <h3>最近浏览</h3>
+                <div className="personal-empty compact">
+                  <strong>暂无浏览记录</strong>
+                  <span>打开知乎原文或资料后，会自动记录在这里。</span>
+                </div>
+              </div>
+            )}
           </section>
-        )}
 
         {route && (
           <section className="results" aria-labelledby="route-title">

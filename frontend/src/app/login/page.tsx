@@ -71,7 +71,8 @@ export default function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-action-panel" aria-labelledby="login-title">
-        <h1 id="login-title" className="visually-hidden">登录看山知识导航</h1>
+        <h1 id="login-title" className="login-card-title">看山知识导航</h1>
+        <p className="login-card-subtitle">从知识出发，发现更大的世界</p>
         {message && <p className="login-message" role="status">{message}</p>}
         {authenticated ? (
           <div className="existing-session-actions">

@@ -37,5 +37,15 @@ export type RouteStreamEvent =
       notice: string;
     }
   | { type: "stage"; stage: RouteStageName; steps: RouteStep[] }
+  | {
+      type: "recommendations";
+      items: Array<{
+        url: string;
+        title: string;
+        topic: string;
+        reason: string;
+        stage: Exclude<RouteStageName, "current">;
+      }>;
+    }
   | { type: "complete" }
   | { type: "error"; message: string };

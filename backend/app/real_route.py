@@ -219,6 +219,34 @@ async def stream_real_route(
         "stage": "advanced",
         "steps": [step.model_dump(mode="json") for step in advanced_steps],
     }
+    route_urls = {
+        _without_query(str(material.url))
+        for step in [*prerequisite_steps, *current_steps, *advanced_steps]
+        for material in step.materials
+        if material.url
+    }
+    recommendation_candidates = [
+        item
+        for item in [*prerequisite_candidates, *advanced_candidates]
+        if item["normalized_url"] not in route_urls
+    ]
+    recommendation_candidates.sort(
+        key=lambda item: item["quality_score"],
+        reverse=True,
+    )
+    yield {
+        "type": "recommendations",
+        "items": [
+            {
+                "url": item["url"],
+                "title": item["title"],
+                "topic": item["topic_name"],
+                "reason": "与本次学习主题相关，且未在学习路线中展示。",
+                "stage": item["stage"],
+            }
+            for item in recommendation_candidates[:12]
+        ],
+    }
     yield {"type": "complete"}
 
 
@@ -268,7 +296,7 @@ async def _search_stage_candidates(
             topic_candidates,
             key=lambda item: item["quality_score"],
             reverse=True,
-        )[:5]
+        )[:8]
         candidates.extend(selected)
         seen_urls.update(
             candidate["normalized_url"] for candidate in selected
