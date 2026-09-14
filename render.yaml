@@ -17,7 +17,7 @@ services:
       - key: OPENAI_BASE_URL
         sync: false
       - key: MODEL_NAME
-        sync: false
+        value: deepseek-v4-pro
       - key: FRONTEND_ORIGINS
         value: https://kanshan-knowledge-agent-web.onrender.com
 
