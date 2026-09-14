@@ -102,7 +102,10 @@ async def zhihu_callback(
         validate_flow_cookie(flow_cookie, config)
         token_data = await exchange_access_token(authorization_code, config)
     except OAuthError:
-        return RedirectResponse(f"{config.frontend_url}/?oauth=error", status_code=302)
+        return RedirectResponse(
+            f"{config.frontend_url}/login?oauth=error",
+            status_code=302,
+        )
 
     response = RedirectResponse(f"{config.frontend_url}/?oauth=success", status_code=302)
     response.delete_cookie(FLOW_COOKIE, path="/")

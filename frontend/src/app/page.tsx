@@ -138,33 +138,32 @@ export default function Home() {
           signal: controller.signal,
         });
         if (!response.ok) throw new Error("Session check failed");
-        setAuth((await response.json()) as AuthSessionResponse);
+        const session = (await response.json()) as AuthSessionResponse;
+        if (!session.authenticated) {
+          window.location.replace("/login");
+          return;
+        }
+        setAuth(session);
       } catch (requestError) {
         if (requestError instanceof Error && requestError.name === "AbortError") return;
-        setAuth({ authenticated: false, configured: false, provider: null });
+        window.location.replace("/login?service=unavailable");
       }
     }
 
     const oauthResult = new URLSearchParams(window.location.search).get("oauth");
     if (oauthResult === "success") setAuthNotice("知乎授权成功");
-    if (oauthResult === "error") setAuthNotice("知乎授权失败或已过期，请重试");
     if (oauthResult) window.history.replaceState({}, "", window.location.pathname);
 
     void checkSession();
     return () => controller.abort();
   }, []);
 
-  function startZhihuLogin() {
-    window.location.assign(`${apiBaseUrl}/api/auth/zhihu/login`);
-  }
-
   async function logout() {
     await fetch(`${apiBaseUrl}/api/auth/logout`, {
       method: "POST",
       credentials: "include",
     });
-    setAuth({ authenticated: false, configured: true, provider: null });
-    setAuthNotice("已退出知乎授权");
+    window.location.replace("/login?logout=success");
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -268,6 +267,15 @@ export default function Home() {
     disconnected: "Backend disconnected",
   }[connection];
 
+  if (!auth?.authenticated) {
+    return (
+      <main className="auth-loading" aria-live="polite">
+        <span />
+        正在验证登录状态…
+      </main>
+    );
+  }
+
   return (
     <main>
       <div className="page-shell">
@@ -278,28 +286,10 @@ export default function Home() {
               {connectionLabel}
             </p>
             <div className="auth-actions">
-              {auth?.authenticated ? (
-                <>
-                  <span className="auth-state">知乎已授权</span>
-                  <button type="button" className="auth-button secondary" onClick={logout}>
-                    退出
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  className="auth-button"
-                  onClick={startZhihuLogin}
-                  disabled={!auth?.configured}
-                  title={auth?.configured === false ? "等待配置知乎 OAuth 凭证" : undefined}
-                >
-                  {auth === null
-                    ? "检查登录状态…"
-                    : auth.configured
-                      ? "知乎授权登录"
-                      : "知乎登录（待配置）"}
-                </button>
-              )}
+              <span className="auth-state">知乎已授权</span>
+              <button type="button" className="auth-button secondary" onClick={logout}>
+                退出登录
+              </button>
             </div>
           </div>
 
