@@ -219,6 +219,18 @@ async def stream_real_route(
         "stage": "advanced",
         "steps": [step.model_dump(mode="json") for step in advanced_steps],
     }
+    related_topic = KnowledgeTopic(
+        name=f"{analysis.title}相关内容",
+        description="围绕当前主题继续拓展阅读。",
+        reason="帮助用户从不同角度理解当前主题。",
+        search_query=" ".join([analysis.title, *analysis.core_concepts[:3]]),
+    )
+    related_candidates = await _search_stage_candidates(
+        zhihu_client,
+        [related_topic],
+        "related",
+        seen_urls,
+    )
     route_urls = {
         _without_query(str(material.url))
         for step in [*prerequisite_steps, *current_steps, *advanced_steps]
@@ -227,7 +239,11 @@ async def stream_real_route(
     }
     recommendation_candidates = [
         item
-        for item in [*prerequisite_candidates, *advanced_candidates]
+        for item in [
+            *related_candidates,
+            *prerequisite_candidates,
+            *advanced_candidates,
+        ]
         if item["normalized_url"] not in route_urls
     ]
     recommendation_candidates.sort(
@@ -241,7 +257,11 @@ async def stream_real_route(
                 "url": item["url"],
                 "title": item["title"],
                 "topic": item["topic_name"],
-                "reason": "与本次学习主题相关，且未在学习路线中展示。",
+                "reason": (
+                    "与当前主题直接相关，且未在学习路线中展示。"
+                    if item["stage"] == "related"
+                    else "与本次学习主题相关，且未在学习路线中展示。"
+                ),
                 "stage": item["stage"],
             }
             for item in recommendation_candidates[:12]

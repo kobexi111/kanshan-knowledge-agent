@@ -44,7 +44,7 @@ export type RouteStreamEvent =
         title: string;
         topic: string;
         reason: string;
-        stage: Exclude<RouteStageName, "current">;
+        stage: Exclude<RouteStageName, "current"> | "related";
       }>;
     }
   | { type: "complete" }

@@ -5,7 +5,7 @@ export interface BrowsingItem {
   title: string;
   topic: string;
   reason: string;
-  stage: RouteStageName | "source";
+  stage: RouteStageName | "source" | "related";
   viewedAt: number;
   visits: number;
 }
@@ -15,7 +15,7 @@ export interface RecommendationItem {
   title: string;
   topic: string;
   reason: string;
-  stage: RouteStageName;
+  stage: RouteStageName | "related";
   addedAt: number;
 }
 

@@ -20,13 +20,6 @@ import type {
   RouteStreamEvent,
 } from "@/types/route";
 
-type ConnectionState = "checking" | "connected" | "disconnected";
-
-interface HealthResponse {
-  status: "ok";
-  service: string;
-}
-
 interface AuthSessionResponse {
   authenticated: boolean;
   configured: boolean;
@@ -110,7 +103,6 @@ function RouteSection({
 }
 
 export default function Home() {
-  const [connection, setConnection] = useState<ConnectionState>("checking");
   const [auth, setAuth] = useState<AuthSessionResponse | null>(null);
   const [authNotice, setAuthNotice] = useState("");
   const [url, setUrl] = useState("");
@@ -122,35 +114,6 @@ export default function Home() {
     useState<Record<RouteStageName, StageStatus>>(initialStageStatuses);
   const [personalization, setPersonalization] = useState<PersonalizationData>({ history: [], candidates: [] });
   const routeRef = useRef<LearningRouteResponse | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function checkBackend() {
-      try {
-        const response = await fetch(`${apiBaseUrl}/health`, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error("Health check failed");
-
-        const data = (await response.json()) as HealthResponse;
-        setConnection(
-          data.status === "ok" && data.service === "zhihu-knowledge-agent"
-            ? "connected"
-            : "disconnected",
-        );
-      } catch (requestError) {
-        if (requestError instanceof Error && requestError.name === "AbortError") {
-          return;
-        }
-        setConnection("disconnected");
-      }
-    }
-
-    void checkBackend();
-    return () => controller.abort();
-  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -306,12 +269,6 @@ export default function Home() {
     }
   }
 
-  const connectionLabel = {
-    checking: "Checking backend...",
-    connected: "Backend connected",
-    disconnected: "Backend disconnected",
-  }[connection];
-
   if (!auth?.authenticated) {
     return (
       <main className="auth-loading" aria-live="polite">
@@ -326,10 +283,6 @@ export default function Home() {
       <div className="page-shell">
         <section className="hero" aria-labelledby="page-title">
           <div className="hero-topbar">
-            <p className={`status status-${connection}`} aria-live="polite">
-              <span aria-hidden="true" />
-              {connectionLabel}
-            </p>
             <div className="auth-actions">
               <span className="auth-state">知乎已授权</span>
               <button type="button" className="auth-button secondary" onClick={switchAccount}>
@@ -398,14 +351,13 @@ export default function Home() {
                 <p className="eyebrow">为你推荐</p>
                 <h2 id="personal-title">沿着最近兴趣继续探索</h2>
               </div>
-              <span>记录仅保存在当前浏览器</span>
             </div>
 
             {recommendations(personalization).length > 0 && (
               <div className="recommendation-grid">
                 {recommendations(personalization).map((item) => (
                   <a key={item.url} href={item.url} target="_blank" rel="noreferrer" onClick={() => openRecommendation(item)}>
-                    <small>{stageLabels[item.stage]} · {item.topic}</small>
+                    <small>{item.stage === "related" ? "相关内容" : stageLabels[item.stage]} · {item.topic}</small>
                     <strong>{item.title}</strong>
                     <span>{item.reason}</span>
                   </a>
