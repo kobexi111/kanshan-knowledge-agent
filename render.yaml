@@ -20,6 +20,10 @@ services:
         value: deepseek-flash
       - key: FRONTEND_ORIGINS
         value: https://kanshan-knowledge-agent-web.onrender.com
+      - key: FRONTEND_URL
+        value: https://kanshan-knowledge-agent-web.onrender.com
+      - key: ZHIHU_OAUTH_REDIRECT_URI
+        value: https://kanshan-knowledge-agent-api.onrender.com/api/auth/zhihu/callback
 
   - type: web
     name: kanshan-knowledge-agent-web

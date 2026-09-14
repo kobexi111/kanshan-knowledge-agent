@@ -2,21 +2,35 @@
 
 import json
 import os
+import time
 from collections.abc import AsyncIterator
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 
 from app.ai_client import AiApiError, AiClient
 from app.models import (
     GenerateRouteRequest,
     GenerateRouteResponse,
     HealthResponse,
+    AuthSessionResponse,
     ZhihuQuestionAnswersRequest,
     ZhihuQuestionAnswersResponse,
     ZhihuSearchRequest,
     ZhihuSearchResponse,
+)
+from app.oauth import (
+    FLOW_COOKIE,
+    SESSION_COOKIE,
+    OAuthConfig,
+    OAuthError,
+    authorization_url,
+    exchange_access_token,
+    new_flow_cookie,
+    read_session,
+    session_cookie,
+    validate_flow_cookie,
 )
 from app.real_route import build_real_route, stream_real_route
 from app.zhihu_client import ZhihuApiError, ZhihuClient
@@ -49,6 +63,87 @@ async def health() -> HealthResponse:
     """Report whether the backend process is ready to receive requests."""
 
     return HealthResponse()
+
+
+@app.get("/api/auth/zhihu/login")
+async def zhihu_login() -> RedirectResponse:
+    """Start the documented Zhihu authorization-code flow."""
+
+    try:
+        config = OAuthConfig.from_env()
+    except OAuthError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    response = RedirectResponse(authorization_url(config), status_code=302)
+    response.set_cookie(
+        FLOW_COOKIE,
+        new_flow_cookie(config),
+        max_age=600,
+        httponly=True,
+        secure=config.secure_cookie,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@app.get("/api/auth/zhihu/callback")
+async def zhihu_callback(
+    authorization_code: str = Query(min_length=1),
+    flow_cookie: str | None = Cookie(default=None, alias=FLOW_COOKIE),
+) -> RedirectResponse:
+    """Exchange the code server-side and create an encrypted browser session."""
+
+    try:
+        config = OAuthConfig.from_env()
+    except OAuthError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+    try:
+        validate_flow_cookie(flow_cookie, config)
+        token_data = await exchange_access_token(authorization_code, config)
+    except OAuthError:
+        return RedirectResponse(f"{config.frontend_url}/?oauth=error", status_code=302)
+
+    response = RedirectResponse(f"{config.frontend_url}/?oauth=success", status_code=302)
+    response.delete_cookie(FLOW_COOKIE, path="/")
+    response.set_cookie(
+        SESSION_COOKIE,
+        session_cookie(token_data, config),
+        max_age=max(1, int(token_data["expires_at"] - time.time())),
+        httponly=True,
+        secure=config.secure_cookie,
+        samesite="none" if config.secure_cookie else "lax",
+        path="/",
+    )
+    return response
+
+
+@app.get("/api/auth/session", response_model=AuthSessionResponse)
+async def auth_session(
+    session_value: str | None = Cookie(default=None, alias=SESSION_COOKIE),
+) -> AuthSessionResponse:
+    """Return only public authorization state, never the OAuth access token."""
+
+    try:
+        authenticated = read_session(session_value, OAuthConfig.from_env())
+        configured = True
+    except OAuthError:
+        authenticated = False
+        configured = False
+    return AuthSessionResponse(
+        authenticated=authenticated,
+        configured=configured,
+        provider="zhihu" if authenticated else None,
+    )
+
+
+@app.post("/api/auth/logout", response_model=AuthSessionResponse)
+async def auth_logout() -> JSONResponse:
+    """Remove the encrypted OAuth session cookie."""
+
+    response = JSONResponse(AuthSessionResponse(authenticated=False).model_dump())
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return response
 
 
 def get_zhihu_client() -> ZhihuClient:

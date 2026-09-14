@@ -66,7 +66,26 @@ pnpm build
 
 - `GET /health`：返回后端服务状态。
 - `POST /api/routes/generate`：读取知乎问题或回答信息，搜索真实知乎内容并返回三段路线。
+- `POST /api/routes/generate/stream`：按前置、当前、进阶三个阶段逐步返回路线。
 - `POST /api/zhihu/search`：使用服务端密钥实验调用知乎开放平台搜索。
+- `GET /api/auth/zhihu/login`：开始知乎 OAuth 授权。
+- `GET /api/auth/zhihu/callback`：接收授权码并由后端换取 Token。
+- `GET /api/auth/session`：返回公开的登录状态，不返回 Token。
+- `POST /api/auth/logout`：清除登录会话。
+
+## 知乎 OAuth 骨架
+
+取得知乎审核发放的 `app_id` 和 `app_key` 后，在后端环境中配置：
+
+```text
+ZHIHU_OAUTH_APP_ID=你的_app_id
+ZHIHU_OAUTH_APP_KEY=你的_app_key
+ZHIHU_OAUTH_REDIRECT_URI=https://kanshan-knowledge-agent-api.onrender.com/api/auth/zhihu/callback
+FRONTEND_URL=https://kanshan-knowledge-agent-web.onrender.com
+SESSION_SECRET=一段足够长的随机字符串
+```
+
+申请材料中的回调地址必须与 `ZHIHU_OAUTH_REDIRECT_URI` 完全一致。`app_key`、`SESSION_SECRET` 和用户 Token 只能保存在后端，不能写进前端或提交到 GitHub。当前骨架仅实现已提供文档中的授权及 Token 交换；在获得官方用户信息接口文档前，页面只显示“知乎已授权”，不会虚构昵称或头像。
 
 ## 阶段 2 使用方式
 
@@ -88,7 +107,7 @@ pnpm build
 
 ## 部署到公网
 
-推荐将 `frontend` 部署到 Vercel，将 `backend` 部署到 Render。
+当前 `render.yaml` 支持将前端和后端一同部署到 Render。
 
 1. 将仓库推送到 GitHub，确认 `.env`、`.env.local` 没有被提交。
 2. 在 Render 使用仓库根目录的 `render.yaml` 创建后端服务，并在控制台填写其中标记为 `sync: false` 的敏感环境变量。

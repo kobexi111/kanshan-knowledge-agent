@@ -53,6 +53,14 @@ h1 {
 .error-message { color: var(--danger); }
 .status-checking { color: var(--pending); }
 
+.hero-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.auth-actions { display: flex; align-items: center; gap: 10px; }
+.auth-state { color: var(--success); font-size: 14px; font-weight: 600; }
+.auth-button { min-height: 36px; padding: 0 13px; font-size: 13px; }
+.auth-button.secondary { border: 1px solid var(--border); color: var(--foreground); background: #f5f7fb; }
+.auth-button.secondary:hover:not(:disabled) { background: #e9edf4; }
+.auth-notice { margin: 14px 0 -8px; color: var(--success); font-size: 14px; }
+
 label { display: block; margin-bottom: 8px; font-weight: 600; }
 .input-row { display: flex; gap: 12px; }
 
@@ -342,6 +350,9 @@ button:disabled { cursor: wait; opacity: 0.65; }
   main { padding: 24px 14px; }
   .hero,
   .results { padding: 28px 20px; }
+  .hero-topbar { align-items: flex-start; flex-direction: column; }
+  .auth-actions { width: 100%; }
+  .auth-button { width: 100%; }
   .input-row { flex-direction: column; }
   .generation-progress { grid-template-columns: 1fr; }
   .graph-toolbar { align-items: flex-start; flex-direction: column; }

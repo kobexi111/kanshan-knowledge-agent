@@ -12,6 +12,14 @@ class HealthResponse(BaseModel):
     service: str = "zhihu-knowledge-agent"
 
 
+class AuthSessionResponse(BaseModel):
+    """Public login state; access tokens are never returned to the browser code."""
+
+    authenticated: bool
+    configured: bool = True
+    provider: Literal["zhihu"] | None = None
+
+
 class GenerateRouteRequest(BaseModel):
     """A supported Zhihu URL submitted by the user."""
 

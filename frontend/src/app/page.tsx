@@ -18,6 +18,12 @@ interface HealthResponse {
   service: string;
 }
 
+interface AuthSessionResponse {
+  authenticated: boolean;
+  configured: boolean;
+  provider: "zhihu" | null;
+}
+
 const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -82,6 +88,8 @@ function RouteSection({
 
 export default function Home() {
   const [connection, setConnection] = useState<ConnectionState>("checking");
+  const [auth, setAuth] = useState<AuthSessionResponse | null>(null);
+  const [authNotice, setAuthNotice] = useState("");
   const [url, setUrl] = useState("");
   const [route, setRoute] = useState<LearningRouteResponse | null>(null);
   const [error, setError] = useState("");
@@ -119,6 +127,46 @@ export default function Home() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function checkSession() {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/auth/session`, {
+          cache: "no-store",
+          credentials: "include",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("Session check failed");
+        setAuth((await response.json()) as AuthSessionResponse);
+      } catch (requestError) {
+        if (requestError instanceof Error && requestError.name === "AbortError") return;
+        setAuth({ authenticated: false, configured: false, provider: null });
+      }
+    }
+
+    const oauthResult = new URLSearchParams(window.location.search).get("oauth");
+    if (oauthResult === "success") setAuthNotice("知乎授权成功");
+    if (oauthResult === "error") setAuthNotice("知乎授权失败或已过期，请重试");
+    if (oauthResult) window.history.replaceState({}, "", window.location.pathname);
+
+    void checkSession();
+    return () => controller.abort();
+  }, []);
+
+  function startZhihuLogin() {
+    window.location.assign(`${apiBaseUrl}/api/auth/zhihu/login`);
+  }
+
+  async function logout() {
+    await fetch(`${apiBaseUrl}/api/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+    setAuth({ authenticated: false, configured: true, provider: null });
+    setAuthNotice("已退出知乎授权");
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -134,6 +182,7 @@ export default function Home() {
     try {
       const response = await fetch(`${apiBaseUrl}/api/routes/generate/stream`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
@@ -223,10 +272,38 @@ export default function Home() {
     <main>
       <div className="page-shell">
         <section className="hero" aria-labelledby="page-title">
-          <p className={`status status-${connection}`} aria-live="polite">
-            <span aria-hidden="true" />
-            {connectionLabel}
-          </p>
+          <div className="hero-topbar">
+            <p className={`status status-${connection}`} aria-live="polite">
+              <span aria-hidden="true" />
+              {connectionLabel}
+            </p>
+            <div className="auth-actions">
+              {auth?.authenticated ? (
+                <>
+                  <span className="auth-state">知乎已授权</span>
+                  <button type="button" className="auth-button secondary" onClick={logout}>
+                    退出
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="auth-button"
+                  onClick={startZhihuLogin}
+                  disabled={!auth?.configured}
+                  title={auth?.configured === false ? "等待配置知乎 OAuth 凭证" : undefined}
+                >
+                  {auth === null
+                    ? "检查登录状态…"
+                    : auth.configured
+                      ? "知乎授权登录"
+                      : "知乎登录（待配置）"}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {authNotice && <p className="auth-notice" role="status">{authNotice}</p>}
 
           <h1 id="page-title">看山知识导航</h1>
           <p className="subtitle">把一篇知乎内容转换成渐进式学习路线</p>
