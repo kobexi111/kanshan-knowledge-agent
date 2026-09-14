@@ -27,7 +27,7 @@ services:
     plan: free
     rootDir: frontend
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
-    startCommand: pnpm start -- -p $PORT
+    startCommand: node node_modules/next/dist/bin/next start -p $PORT
     envVars:
       - key: NODE_VERSION
         value: 22.14.0
