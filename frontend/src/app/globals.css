@@ -412,8 +412,9 @@ button:disabled { cursor: wait; opacity: 0.65; }
   .hero,
   .results { padding: 28px 20px; }
   .hero-topbar { align-items: flex-start; flex-direction: column; }
-  .auth-actions { width: 100%; }
-  .auth-button { width: 100%; }
+  .auth-actions { flex-wrap: wrap; width: 100%; }
+  .auth-state { flex-basis: 100%; }
+  .auth-button { flex: 1; }
   .input-row { flex-direction: column; }
   .generation-progress { grid-template-columns: 1fr; }
   .graph-toolbar { align-items: flex-start; flex-direction: column; }

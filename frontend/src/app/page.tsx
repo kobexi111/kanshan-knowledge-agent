@@ -166,6 +166,10 @@ export default function Home() {
     window.location.replace("/login?logout=success");
   }
 
+  function switchAccount() {
+    window.location.assign(`${apiBaseUrl}/api/auth/zhihu/switch`);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -287,6 +291,9 @@ export default function Home() {
             </p>
             <div className="auth-actions">
               <span className="auth-state">知乎已授权</span>
+              <button type="button" className="auth-button secondary" onClick={switchAccount}>
+                切换账号
+              </button>
               <button type="button" className="auth-button secondary" onClick={logout}>
                 退出登录
               </button>

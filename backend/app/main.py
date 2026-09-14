@@ -86,6 +86,29 @@ async def zhihu_login() -> RedirectResponse:
     return response
 
 
+@app.get("/api/auth/zhihu/switch")
+async def zhihu_switch_account() -> RedirectResponse:
+    """Clear the app session and start a fresh Zhihu authorization flow."""
+
+    try:
+        config = OAuthConfig.from_env()
+    except OAuthError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+    response = RedirectResponse(authorization_url(config), status_code=302)
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    response.set_cookie(
+        FLOW_COOKIE,
+        new_flow_cookie(config),
+        max_age=600,
+        httponly=True,
+        secure=config.secure_cookie,
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
 @app.get("/api/auth/zhihu/callback")
 async def zhihu_callback(
     authorization_code: str = Query(min_length=1),
