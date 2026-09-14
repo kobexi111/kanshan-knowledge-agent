@@ -158,12 +158,8 @@ export default function Home() {
     return () => controller.abort();
   }, []);
 
-  async function logout() {
-    await fetch(`${apiBaseUrl}/api/auth/logout`, {
-      method: "POST",
-      credentials: "include",
-    });
-    window.location.replace("/login?logout=success");
+  function logout() {
+    window.location.assign(`${apiBaseUrl}/api/auth/logout`);
   }
 
   function switchAccount() {

@@ -14,6 +14,7 @@ const apiBaseUrl =
 export default function LoginPage() {
   const [checking, setChecking] = useState(true);
   const [configured, setConfigured] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -38,7 +39,10 @@ export default function LoginPage() {
         if (!response.ok) throw new Error("Session check failed");
         const session = (await response.json()) as AuthSessionResponse;
         setConfigured(session.configured);
-        if (session.authenticated) window.location.replace("/");
+        setAuthenticated(session.authenticated);
+        if (session.authenticated) {
+          setMessage("这个浏览器中存在已授权会话，请确认是否由本人继续使用。");
+        }
       } catch (requestError) {
         if (requestError instanceof Error && requestError.name === "AbortError") return;
         setConfigured(false);
@@ -56,23 +60,42 @@ export default function LoginPage() {
     window.location.assign(`${apiBaseUrl}/api/auth/zhihu/login`);
   }
 
+  function switchAccount() {
+    window.location.assign(`${apiBaseUrl}/api/auth/zhihu/switch`);
+  }
+
+  function continueToApp() {
+    window.location.assign("/");
+  }
+
   return (
     <main className="login-page">
       <section className="login-action-panel" aria-labelledby="login-title">
         <h1 id="login-title" className="visually-hidden">登录看山知识导航</h1>
         {message && <p className="login-message" role="status">{message}</p>}
-        <button
-          type="button"
-          className="zhihu-login-button"
-          onClick={loginWithZhihu}
-          disabled={checking || !configured}
-        >
-          {checking
-            ? "正在检查登录状态…"
-            : configured
-              ? "使用知乎账号授权登录"
-              : "登录服务暂不可用"}
-        </button>
+        {authenticated ? (
+          <div className="existing-session-actions">
+            <button type="button" className="zhihu-login-button" onClick={continueToApp}>
+              继续进入
+            </button>
+            <button type="button" className="switch-login-button" onClick={switchAccount}>
+              切换其他知乎账号
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="zhihu-login-button"
+            onClick={loginWithZhihu}
+            disabled={checking || !configured}
+          >
+            {checking
+              ? "正在检查登录状态…"
+              : configured
+                ? "使用知乎账号授权登录"
+                : "登录服务暂不可用"}
+          </button>
+        )}
         <p className="login-privacy">安全授权 · 凭证仅由后端加密保存</p>
       </section>
     </main>

@@ -74,6 +74,13 @@ async def zhihu_login() -> RedirectResponse:
     except OAuthError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
     response = RedirectResponse(authorization_url(config), status_code=302)
+    response.delete_cookie(
+        SESSION_COOKIE,
+        path="/",
+        secure=config.secure_cookie,
+        httponly=True,
+        samesite="none" if config.secure_cookie else "lax",
+    )
     response.set_cookie(
         FLOW_COOKIE,
         new_flow_cookie(config),
@@ -96,7 +103,13 @@ async def zhihu_switch_account() -> RedirectResponse:
         raise HTTPException(status_code=503, detail=str(error)) from error
 
     response = RedirectResponse(authorization_url(config), status_code=302)
-    response.delete_cookie(SESSION_COOKIE, path="/")
+    response.delete_cookie(
+        SESSION_COOKIE,
+        path="/",
+        secure=config.secure_cookie,
+        httponly=True,
+        samesite="none" if config.secure_cookie else "lax",
+    )
     response.set_cookie(
         FLOW_COOKIE,
         new_flow_cookie(config),
@@ -167,8 +180,40 @@ async def auth_session(
 async def auth_logout() -> JSONResponse:
     """Remove the encrypted OAuth session cookie."""
 
+    try:
+        config = OAuthConfig.from_env()
+    except OAuthError:
+        config = None
     response = JSONResponse(AuthSessionResponse(authenticated=False).model_dump())
-    response.delete_cookie(SESSION_COOKIE, path="/")
+    response.delete_cookie(
+        SESSION_COOKIE,
+        path="/",
+        secure=config.secure_cookie if config else False,
+        httponly=True,
+        samesite="none" if config and config.secure_cookie else "lax",
+    )
+    return response
+
+
+@app.get("/api/auth/logout")
+async def auth_logout_redirect() -> RedirectResponse:
+    """Reliably clear the browser session and return to the login screen."""
+
+    try:
+        config = OAuthConfig.from_env()
+    except OAuthError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    response = RedirectResponse(
+        f"{config.frontend_url}/login?logout=success",
+        status_code=302,
+    )
+    response.delete_cookie(
+        SESSION_COOKIE,
+        path="/",
+        secure=config.secure_cookie,
+        httponly=True,
+        samesite="none" if config.secure_cookie else "lax",
+    )
     return response
 
 

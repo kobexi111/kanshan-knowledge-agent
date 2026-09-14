@@ -82,6 +82,9 @@ main { min-height: 100vh; padding: 48px 24px; }
   font-size: 16px;
 }
 .zhihu-login-button:hover:not(:disabled) { color: #fff; background: #1677ea; transform: translateY(-2px); box-shadow: 0 18px 38px rgb(20 91 169 / 32%); }
+.existing-session-actions { display: grid; gap: 10px; }
+.switch-login-button { width: 100%; min-height: 44px; border: 1px solid rgb(255 255 255 / 75%); color: #175fae; background: rgb(226 242 255 / 88%); box-shadow: 0 8px 22px rgb(20 91 169 / 15%); backdrop-filter: blur(12px); }
+.switch-login-button:hover:not(:disabled) { color: #fff; background: #438fe8; }
 .login-privacy { margin: 11px 0 0; color: rgb(28 104 187 / 82%); font-size: 12px; text-shadow: 0 1px 5px rgb(255 255 255 / 80%); }
 
 .page-shell { width: min(1120px, 100%); margin: 0 auto; }
