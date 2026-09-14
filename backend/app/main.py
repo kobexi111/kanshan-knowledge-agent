@@ -29,6 +29,7 @@ from app.oauth import (
     exchange_access_token,
     new_flow_cookie,
     read_session,
+    session_profile_id,
     session_cookie,
     validate_flow_cookie,
 )
@@ -164,15 +165,19 @@ async def auth_session(
     """Return only public authorization state, never the OAuth access token."""
 
     try:
-        authenticated = read_session(session_value, OAuthConfig.from_env())
+        config = OAuthConfig.from_env()
+        authenticated = read_session(session_value, config)
+        profile_id = session_profile_id(session_value, config)
         configured = True
     except OAuthError:
         authenticated = False
+        profile_id = None
         configured = False
     return AuthSessionResponse(
         authenticated=authenticated,
         configured=configured,
         provider="zhihu" if authenticated else None,
+        profile_id=profile_id,
     )
 
 

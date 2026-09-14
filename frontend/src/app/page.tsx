@@ -1,9 +1,18 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { KanshanPet } from "@/components/KanshanPet";
 import { KnowledgeGraph } from "@/components/KnowledgeGraph";
+import {
+  loadPersonalization,
+  recommendations,
+  recordView,
+  rememberRoute,
+  type BrowsingItem,
+  type PersonalizationData,
+  type RecommendationItem,
+} from "@/lib/personalization";
 import type {
   LearningRouteResponse,
   RouteStageName,
@@ -22,6 +31,7 @@ interface AuthSessionResponse {
   authenticated: boolean;
   configured: boolean;
   provider: "zhihu" | null;
+  profile_id: string | null;
 }
 
 const apiBaseUrl =
@@ -45,10 +55,12 @@ function RouteSection({
   name,
   steps,
   status = "done",
+  onMaterialOpen,
 }: {
   name: RouteStageName;
   steps: RouteStep[];
   status?: StageStatus;
+  onMaterialOpen: (item: Omit<BrowsingItem, "viewedAt" | "visits">) => void;
 }) {
   return (
     <section className={`route-section route-${name}`}>
@@ -69,7 +81,18 @@ function RouteSection({
             {step.materials.map((material) => (
               <li key={material.title}>
                 {material.url ? (
-                  <a href={material.url} target="_blank" rel="noreferrer">
+                  <a
+                    href={material.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => onMaterialOpen({
+                      url: material.url!,
+                      title: material.title,
+                      topic: step.title,
+                      reason: material.reason,
+                      stage: name,
+                    })}
+                  >
                     {material.title}
                   </a>
                 ) : (
@@ -97,6 +120,8 @@ export default function Home() {
   const [view, setView] = useState<"route" | "graph">("route");
   const [stageStatuses, setStageStatuses] =
     useState<Record<RouteStageName, StageStatus>>(initialStageStatuses);
+  const [personalization, setPersonalization] = useState<PersonalizationData>({ history: [], candidates: [] });
+  const routeRef = useRef<LearningRouteResponse | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -144,6 +169,7 @@ export default function Home() {
           return;
         }
         setAuth(session);
+        if (session.profile_id) setPersonalization(loadPersonalization(session.profile_id));
       } catch (requestError) {
         if (requestError instanceof Error && requestError.name === "AbortError") return;
         window.location.replace("/login?service=unavailable");
@@ -166,10 +192,26 @@ export default function Home() {
     window.location.assign(`${apiBaseUrl}/api/auth/zhihu/switch`);
   }
 
+  function trackView(item: Omit<BrowsingItem, "viewedAt" | "visits">) {
+    if (!auth?.profile_id) return;
+    setPersonalization(recordView(auth.profile_id, item));
+  }
+
+  function openRecommendation(item: RecommendationItem) {
+    trackView({
+      url: item.url,
+      title: item.title,
+      topic: item.topic,
+      reason: item.reason,
+      stage: item.stage,
+    });
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setRoute(null);
+    routeRef.current = null;
     setIsSubmitting(true);
     setView("route");
     setStageStatuses({
@@ -213,29 +255,32 @@ export default function Home() {
           return;
         }
         if (streamEvent.type === "source") {
-          setRoute({
+          const nextRoute: LearningRouteResponse = {
             source: streamEvent.source,
             route: { prerequisite: [], current: [], advanced: [] },
             notice: streamEvent.notice,
-          });
+          };
+          routeRef.current = nextRoute;
+          setRoute(nextRoute);
           return;
         }
         if (streamEvent.type === "stage") {
-          setRoute((previous) =>
-            previous
-              ? {
-                  ...previous,
-                  route: {
-                    ...previous.route,
-                    [streamEvent.stage]: streamEvent.steps,
-                  },
-                }
-              : previous,
-          );
+          if (routeRef.current) {
+            const nextRoute = {
+              ...routeRef.current,
+              route: { ...routeRef.current.route, [streamEvent.stage]: streamEvent.steps },
+            };
+            routeRef.current = nextRoute;
+            setRoute(nextRoute);
+          }
           setStageStatuses((previous) => ({
             ...previous,
             [streamEvent.stage]: "done",
           }));
+          return;
+        }
+        if (streamEvent.type === "complete" && auth?.profile_id && routeRef.current) {
+          setPersonalization(rememberRoute(auth.profile_id, routeRef.current));
         }
       }
 
@@ -347,13 +392,62 @@ export default function Home() {
           )}
         </section>
 
+        {(personalization.history.length > 0 || personalization.candidates.length > 0) && (
+          <section className="personal-section" aria-labelledby="personal-title">
+            <div className="personal-heading">
+              <div>
+                <p className="eyebrow">为你推荐</p>
+                <h2 id="personal-title">沿着最近兴趣继续探索</h2>
+              </div>
+              <span>记录仅保存在当前浏览器</span>
+            </div>
+
+            {recommendations(personalization).length > 0 && (
+              <div className="recommendation-grid">
+                {recommendations(personalization).map((item) => (
+                  <a key={item.url} href={item.url} target="_blank" rel="noreferrer" onClick={() => openRecommendation(item)}>
+                    <small>{stageLabels[item.stage]} · {item.topic}</small>
+                    <strong>{item.title}</strong>
+                    <span>{item.reason}</span>
+                  </a>
+                ))}
+              </div>
+            )}
+
+            {personalization.history.length > 0 && (
+              <div className="recent-history">
+                <h3>最近浏览</h3>
+                <div>
+                  {personalization.history.slice(0, 6).map((item) => (
+                    <a key={item.url} href={item.url} target="_blank" rel="noreferrer" onClick={() => trackView(item)}>
+                      <span>{item.title}</span>
+                      <small>{item.visits > 1 ? `浏览 ${item.visits} 次` : item.topic}</small>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
         {route && (
           <section className="results" aria-labelledby="route-title">
             <div className="source-summary">
               <p className="eyebrow">分析对象</p>
               <h2 id="route-title">{route.source.title}</h2>
               <p>{route.source.summary}</p>
-              <a href={route.source.url} target="_blank" rel="noreferrer">
+              <a
+                href={route.source.url}
+                target="_blank"
+                rel="noreferrer"
+                onClick={() => trackView({
+                  url: route.source.url,
+                  title: route.source.title,
+                  topic: route.source.title,
+                  reason: "用于生成当前学习路线的知乎内容",
+                  stage: "source",
+                })}
+              >
                 查看提交的知乎链接
               </a>
             </div>
@@ -379,11 +473,11 @@ export default function Home() {
 
             {view === "route" ? (
               <div className="route-flow">
-                <RouteSection name="prerequisite" steps={route.route.prerequisite} status={stageStatuses.prerequisite} />
+                <RouteSection name="prerequisite" steps={route.route.prerequisite} status={stageStatuses.prerequisite} onMaterialOpen={trackView} />
                 <div className="route-arrow" aria-hidden="true">↓</div>
-                <RouteSection name="current" steps={route.route.current} status={stageStatuses.current} />
+                <RouteSection name="current" steps={route.route.current} status={stageStatuses.current} onMaterialOpen={trackView} />
                 <div className="route-arrow" aria-hidden="true">↓</div>
-                <RouteSection name="advanced" steps={route.route.advanced} status={stageStatuses.advanced} />
+                <RouteSection name="advanced" steps={route.route.advanced} status={stageStatuses.advanced} onMaterialOpen={trackView} />
               </div>
             ) : (
               <KnowledgeGraph

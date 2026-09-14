@@ -13,6 +13,7 @@ from app.oauth import (
     exchange_access_token,
     new_flow_cookie,
     read_session,
+    session_profile_id,
     session_cookie,
     validate_flow_cookie,
 )
@@ -52,7 +53,12 @@ def test_flow_marker_and_encrypted_session(config: OAuthConfig) -> None:
     )
     assert "private" not in value
     assert read_session(value, config) is True
+    profile_id = session_profile_id(value, config)
+    assert profile_id is not None
+    assert len(profile_id) == 24
+    assert "private" not in profile_id
     assert read_session("invalid", config) is False
+    assert session_profile_id("invalid", config) is None
 
 
 def test_exchange_access_token_uses_documented_form(config: OAuthConfig) -> None:

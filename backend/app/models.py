@@ -18,6 +18,7 @@ class AuthSessionResponse(BaseModel):
     authenticated: bool
     configured: bool = True
     provider: Literal["zhihu"] | None = None
+    profile_id: str | None = None
 
 
 class GenerateRouteRequest(BaseModel):

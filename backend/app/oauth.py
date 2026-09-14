@@ -136,6 +136,22 @@ def read_session(value: str | None, config: OAuthConfig) -> bool:
     )
 
 
+def session_profile_id(value: str | None, config: OAuthConfig) -> str | None:
+    """Return a non-reversible browser storage namespace for this OAuth grant."""
+
+    data = _decrypt(value, config.session_secret)
+    if not (
+        data
+        and data.get("access_token")
+        and int(data.get("expires_at", 0)) > time.time()
+    ):
+        return None
+    token = str(data["access_token"])
+    return hashlib.sha256(
+        f"{config.session_secret}:{token}".encode("utf-8")
+    ).hexdigest()[:24]
+
+
 def _fernet(secret: str) -> Fernet:
     key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode("utf-8")).digest())
     return Fernet(key)
