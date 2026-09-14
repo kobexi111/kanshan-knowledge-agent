@@ -4,7 +4,12 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { KanshanPet } from "@/components/KanshanPet";
 import { KnowledgeGraph } from "@/components/KnowledgeGraph";
-import type { LearningRouteResponse, RouteStep } from "@/types/route";
+import type {
+  LearningRouteResponse,
+  RouteStageName,
+  RouteStep,
+  RouteStreamEvent,
+} from "@/types/route";
 
 type ConnectionState = "checking" | "connected" | "disconnected";
 
@@ -22,16 +27,31 @@ const stageLabels = {
   advanced: "进阶知识",
 } as const;
 
+type StageStatus = "pending" | "running" | "done";
+
+const initialStageStatuses: Record<RouteStageName, StageStatus> = {
+  prerequisite: "pending",
+  current: "pending",
+  advanced: "pending",
+};
+
 function RouteSection({
   name,
   steps,
+  status = "done",
 }: {
-  name: keyof typeof stageLabels;
+  name: RouteStageName;
   steps: RouteStep[];
+  status?: StageStatus;
 }) {
   return (
     <section className={`route-section route-${name}`}>
       <h2>{stageLabels[name]}</h2>
+      {steps.length === 0 && (
+        <div className={`route-placeholder is-${status}`} aria-live="polite">
+          {status === "running" ? "正在生成这一阶段…" : "等待上一阶段完成"}
+        </div>
+      )}
       {steps.map((step) => (
         <article className="route-card" key={step.title}>
           <div className="card-heading">
@@ -67,6 +87,8 @@ export default function Home() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [view, setView] = useState<"route" | "graph">("route");
+  const [stageStatuses, setStageStatuses] =
+    useState<Record<RouteStageName, StageStatus>>(initialStageStatuses);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -102,9 +124,15 @@ export default function Home() {
     setError("");
     setRoute(null);
     setIsSubmitting(true);
+    setView("route");
+    setStageStatuses({
+      prerequisite: "running",
+      current: "pending",
+      advanced: "pending",
+    });
 
     try {
-      const response = await fetch(`${apiBaseUrl}/api/routes/generate`, {
+      const response = await fetch(`${apiBaseUrl}/api/routes/generate/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
@@ -121,8 +149,59 @@ export default function Home() {
         );
       }
 
-      setRoute((await response.json()) as LearningRouteResponse);
-      setView("route");
+      if (!response.body) throw new Error("浏览器无法读取流式响应。");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      function applyEvent(streamEvent: RouteStreamEvent) {
+        if (streamEvent.type === "error") throw new Error(streamEvent.message);
+        if (streamEvent.type === "progress") {
+          setStageStatuses((previous) => ({
+            ...previous,
+            [streamEvent.stage]: "running",
+          }));
+          return;
+        }
+        if (streamEvent.type === "source") {
+          setRoute({
+            source: streamEvent.source,
+            route: { prerequisite: [], current: [], advanced: [] },
+            notice: streamEvent.notice,
+          });
+          return;
+        }
+        if (streamEvent.type === "stage") {
+          setRoute((previous) =>
+            previous
+              ? {
+                  ...previous,
+                  route: {
+                    ...previous.route,
+                    [streamEvent.stage]: streamEvent.steps,
+                  },
+                }
+              : previous,
+          );
+          setStageStatuses((previous) => ({
+            ...previous,
+            [streamEvent.stage]: "done",
+          }));
+        }
+      }
+
+      while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value, { stream: !done });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (line.trim()) applyEvent(JSON.parse(line) as RouteStreamEvent);
+        }
+        if (done) break;
+      }
+      if (buffer.trim()) applyEvent(JSON.parse(buffer) as RouteStreamEvent);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -178,6 +257,24 @@ export default function Home() {
               {error}
             </p>
           )}
+
+          {isSubmitting && (
+            <div className="generation-progress" aria-live="polite">
+              {(Object.keys(stageLabels) as RouteStageName[]).map((stage) => (
+                <div className={`progress-step is-${stageStatuses[stage]}`} key={stage}>
+                  <span aria-hidden="true" />
+                  <strong>{stageLabels[stage]}</strong>
+                  <small>
+                    {stageStatuses[stage] === "done"
+                      ? "已完成"
+                      : stageStatuses[stage] === "running"
+                        ? "生成中"
+                        : "等待中"}
+                  </small>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {route && (
@@ -193,7 +290,7 @@ export default function Home() {
 
             <p className="mock-notice">{route.notice}</p>
 
-            <div className="view-switch" role="group" aria-label="学习路线展示方式">
+            {!isSubmitting && <div className="view-switch" role="group" aria-label="学习路线展示方式">
               <button
                 type="button"
                 className={view === "route" ? "is-active" : ""}
@@ -208,15 +305,15 @@ export default function Home() {
               >
                 3D星图
               </button>
-            </div>
+            </div>}
 
             {view === "route" ? (
               <div className="route-flow">
-                <RouteSection name="prerequisite" steps={route.route.prerequisite} />
+                <RouteSection name="prerequisite" steps={route.route.prerequisite} status={stageStatuses.prerequisite} />
                 <div className="route-arrow" aria-hidden="true">↓</div>
-                <RouteSection name="current" steps={route.route.current} />
+                <RouteSection name="current" steps={route.route.current} status={stageStatuses.current} />
                 <div className="route-arrow" aria-hidden="true">↓</div>
-                <RouteSection name="advanced" steps={route.route.advanced} />
+                <RouteSection name="advanced" steps={route.route.advanced} status={stageStatuses.advanced} />
               </div>
             ) : (
               <KnowledgeGraph

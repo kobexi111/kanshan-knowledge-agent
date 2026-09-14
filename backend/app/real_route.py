@@ -2,6 +2,7 @@
 
 import math
 import re
+from collections.abc import AsyncIterator
 from typing import Any, Literal
 from urllib.parse import urlsplit, urlunsplit
 
@@ -21,6 +22,7 @@ from app.models import (
 from app.zhihu_client import ZhihuApiError, ZhihuClient
 
 QUESTION_PATH = re.compile(r"^/question/(?P<question_id>\d+)(?:/answer/(?P<answer_id>\d+))?/?$")
+ROUTE_NOTICE = "知识结构由 AI 分析；所有推荐资料均来自知乎 API 搜索结果。"
 
 
 async def build_real_route(
@@ -102,8 +104,122 @@ async def build_real_route(
             ],
             advanced=advanced_steps,
         ),
-        notice="知识结构由 AI 分析；所有推荐资料均来自知乎 API 搜索结果。",
+        notice=ROUTE_NOTICE,
     )
+
+
+async def stream_real_route(
+    request: GenerateRouteRequest,
+    zhihu_client: ZhihuClient,
+    ai_client: AiClient,
+) -> AsyncIterator[dict[str, Any]]:
+    """Yield a route as soon as each prerequisite/current/advanced stage is ready."""
+
+    submitted_url = str(request.url)
+    match = QUESTION_PATH.match(urlsplit(submitted_url).path)
+    if not match:
+        raise ValueError("当前流程仅支持知乎问题或回答链接；文章详情能力尚未确认。")
+
+    yield {"type": "progress", "stage": "prerequisite", "status": "running"}
+    question_url = f"https://www.zhihu.com/question/{match.group('question_id')}"
+    target_answer_id = match.group("answer_id")
+    answers = await _fetch_answers(zhihu_client, question_url, target_answer_id)
+    source_item = _select_source_answer(answers, target_answer_id)
+    source_text = _text(source_item.get("Summary"))
+    if not source_text:
+        raise ZhihuApiError("目标知乎内容没有可供 AI 分析的摘要。")
+
+    analysis = await ai_client.analyze_content(source_text)
+    source_type = "回答" if target_answer_id else "问题"
+    source = SourceContent(
+        url=request.url,
+        title=analysis.title,
+        summary=analysis.summary,
+        content_type="zhihu",
+    )
+    yield {
+        "type": "source",
+        "source": source.model_dump(mode="json"),
+        "notice": ROUTE_NOTICE,
+    }
+
+    seen_urls = {_without_query(submitted_url)}
+    prerequisite_candidates = await _search_stage_candidates(
+        zhihu_client,
+        analysis.prerequisites,
+        "prerequisite",
+        seen_urls,
+    )
+    if not prerequisite_candidates:
+        raise ZhihuApiError("没有搜索到可供筛选的前置知识资料。")
+    prerequisite_selection = await ai_client.select_stage_materials(
+        analysis,
+        [_candidate_for_ai(item) for item in prerequisite_candidates],
+        "prerequisite",
+    )
+    prerequisite_steps = _build_steps(
+        analysis.prerequisites,
+        prerequisite_selection.choices,
+        {item["candidate_id"]: item for item in prerequisite_candidates},
+        "入门",
+    )
+    yield {
+        "type": "stage",
+        "stage": "prerequisite",
+        "steps": [step.model_dump(mode="json") for step in prerequisite_steps],
+    }
+
+    yield {"type": "progress", "stage": "current", "status": "running"}
+    current_steps = [
+        RouteStep(
+            title=f"当前知识：{analysis.title}",
+            description=(
+                f"难度判断：{analysis.current_level}。核心概念："
+                + "、".join(analysis.core_concepts)
+            ),
+            difficulty=analysis.current_level,
+            materials=[
+                LearningMaterial(
+                    title=f"用户提交的知乎{source_type}",
+                    reason="这是本次知识分析和路线规划的起点。",
+                    url=request.url,
+                    is_mock=False,
+                )
+            ],
+        )
+    ]
+    yield {
+        "type": "stage",
+        "stage": "current",
+        "steps": [step.model_dump(mode="json") for step in current_steps],
+    }
+
+    yield {"type": "progress", "stage": "advanced", "status": "running"}
+    advanced_candidates = await _search_stage_candidates(
+        zhihu_client,
+        analysis.advanced_topics,
+        "advanced",
+        seen_urls,
+    )
+    if not advanced_candidates:
+        raise ZhihuApiError("没有搜索到可供筛选的进阶知识资料。")
+    advanced_selection = await ai_client.select_stage_materials(
+        analysis,
+        [_candidate_for_ai(item) for item in advanced_candidates],
+        "advanced",
+    )
+    advanced_steps = _build_steps(
+        analysis.advanced_topics,
+        advanced_selection.choices,
+        {item["candidate_id"]: item for item in advanced_candidates},
+        "进阶",
+    )
+    yield {
+        "type": "stage",
+        "stage": "advanced",
+        "steps": [step.model_dump(mode="json") for step in advanced_steps],
+    }
+    yield {"type": "complete"}
 
 
 async def _search_candidates(
@@ -111,18 +227,28 @@ async def _search_candidates(
     analysis: KnowledgeAnalysis,
     submitted_url: str,
 ) -> list[dict[str, Any]]:
-    jobs = [
-        ("prerequisite", topic)
-        for topic in analysis.prerequisites
-    ] + [
-        ("advanced", topic)
-        for topic in analysis.advanced_topics
-    ]
-    candidates: list[dict[str, Any]] = []
     seen_urls = {_without_query(submitted_url)}
+    prerequisite = await _search_stage_candidates(
+        client, analysis.prerequisites, "prerequisite", seen_urls
+    )
+    advanced = await _search_stage_candidates(
+        client, analysis.advanced_topics, "advanced", seen_urls
+    )
+    return [*prerequisite, *advanced]
+
+
+async def _search_stage_candidates(
+    client: ZhihuClient,
+    topics: list[KnowledgeTopic],
+    stage: str,
+    seen_urls: set[str],
+) -> list[dict[str, Any]]:
+    """Search one stage sequentially to respect the Zhihu rate limiter."""
+
+    candidates: list[dict[str, Any]] = []
     # Search sequentially. A route can contain several topics and sending all
     # searches in one burst can trigger the Open Platform rate limiter.
-    for stage, topic in jobs:
+    for topic in topics:
         data = await client.search(topic.search_query, 10, "VoteUpCount:desc")
         if not isinstance(data, dict) or not isinstance(data.get("Items"), list):
             continue

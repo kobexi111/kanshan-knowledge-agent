@@ -1,9 +1,12 @@
 """FastAPI application entry point for the MVP backend."""
 
+import json
 import os
+from collections.abc import AsyncIterator
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from app.ai_client import AiApiError, AiClient
 from app.models import (
@@ -15,7 +18,7 @@ from app.models import (
     ZhihuSearchRequest,
     ZhihuSearchResponse,
 )
-from app.real_route import build_real_route
+from app.real_route import build_real_route, stream_real_route
 from app.zhihu_client import ZhihuApiError, ZhihuClient
 
 app = FastAPI(
@@ -91,6 +94,43 @@ async def generate_route(
             503 if "缺少 AI 配置" in str(error) else 502
         )
         raise HTTPException(status_code=status_code, detail=str(error)) from error
+
+
+@app.post("/api/routes/generate/stream")
+async def generate_route_stream(
+    request: GenerateRouteRequest,
+    zhihu_client: ZhihuClient = Depends(get_zhihu_client),
+    ai_client: AiClient = Depends(get_ai_client),
+) -> StreamingResponse:
+    """Stream newline-delimited JSON whenever one route stage is complete."""
+
+    async def events() -> AsyncIterator[str]:
+        try:
+            async for event in stream_real_route(request, zhihu_client, ai_client):
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+        except ValueError as error:
+            message = str(error)
+        except ZhihuApiError as error:
+            rate_limited = error.status == 429 or "rate limit" in str(error).lower()
+            message = (
+                "知乎 API 调用频率受限，请稍后再试。"
+                if rate_limited
+                else f"知乎 API：{error}"
+            )
+        except AiApiError as error:
+            message = str(error)
+        else:
+            return
+        yield json.dumps({"type": "error", "message": message}, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(
+        events(),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/api/zhihu/search", response_model=ZhihuSearchResponse)

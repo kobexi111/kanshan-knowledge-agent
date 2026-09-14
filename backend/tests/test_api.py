@@ -8,6 +8,7 @@ from app.models import (
     KnowledgeTopic,
     MaterialChoice,
     MaterialSelection,
+    StageMaterialSelection,
 )
 
 client = TestClient(app)
@@ -145,6 +146,80 @@ def test_generate_route_returns_real_zhihu_materials() -> None:
         for material in data["route"]["prerequisite"][0]["materials"]
     )
     assert "由 AI 分析" in data["notice"]
+
+
+def test_generate_route_streams_stages_in_order() -> None:
+    topic_before = KnowledgeTopic(
+        name="数学基础",
+        description="理解必要数学概念。",
+        reason="模型训练依赖数学表达。",
+        search_query="机器学习 数学基础",
+    )
+    topic_after = KnowledgeTopic(
+        name="模型优化",
+        description="进一步优化模型表现。",
+        reason="掌握基础后继续提高。",
+        search_query="机器学习 模型优化",
+    )
+
+    class FakeZhihuClient:
+        async def question_answers(self, *args: object, **kwargs: object) -> dict:
+            return {
+                "Items": [{"ContentToken": "987654", "Summary": "机器学习基础"}],
+                "Paging": {"IsEnd": True},
+            }
+
+        async def search(self, query: str, *args: object) -> dict:
+            suffix = "before" if "数学" in query else "after"
+            return {
+                "Items": [{
+                    "ContentID": suffix,
+                    "Title": f"资料 {suffix}",
+                    "Url": f"https://www.zhihu.com/question/1/answer/{suffix}",
+                    "VoteUpCount": 10,
+                }]
+            }
+
+    class FakeAiClient:
+        async def analyze_content(self, content: str) -> KnowledgeAnalysis:
+            return KnowledgeAnalysis(
+                title="机器学习",
+                summary="测试摘要",
+                current_level="基础",
+                core_concepts=["训练"],
+                prerequisites=[topic_before],
+                advanced_topics=[topic_after],
+            )
+
+        async def select_stage_materials(
+            self,
+            analysis: KnowledgeAnalysis,
+            candidates: list[dict],
+            stage: str,
+        ) -> StageMaterialSelection:
+            candidate = candidates[0]
+            topic = topic_before if stage == "prerequisite" else topic_after
+            return StageMaterialSelection(choices=[MaterialChoice(
+                candidate_id=str(candidate["candidate_id"]),
+                topic_name=topic.name,
+                reason="适合该学习阶段。",
+            )])
+
+    app.dependency_overrides[get_zhihu_client] = FakeZhihuClient
+    app.dependency_overrides[get_ai_client] = FakeAiClient
+    try:
+        response = client.post(
+            "/api/routes/generate/stream",
+            json={"url": "https://www.zhihu.com/question/123456/answer/987654"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    events = [__import__("json").loads(line) for line in response.text.splitlines()]
+    stages = [event["stage"] for event in events if event["type"] == "stage"]
+    assert stages == ["prerequisite", "current", "advanced"]
+    assert events[-1] == {"type": "complete"}
 
 
 def test_generate_route_rejects_non_zhihu_url() -> None:

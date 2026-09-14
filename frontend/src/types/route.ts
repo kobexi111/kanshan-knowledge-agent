@@ -26,3 +26,16 @@ export interface LearningRouteResponse {
   };
   notice: string;
 }
+
+export type RouteStageName = "prerequisite" | "current" | "advanced";
+
+export type RouteStreamEvent =
+  | { type: "progress"; stage: RouteStageName; status: "running" }
+  | {
+      type: "source";
+      source: LearningRouteResponse["source"];
+      notice: string;
+    }
+  | { type: "stage"; stage: RouteStageName; steps: RouteStep[] }
+  | { type: "complete" }
+  | { type: "error"; message: string };

@@ -105,6 +105,12 @@ class MaterialSelection(BaseModel):
     advanced: list[MaterialChoice]
 
 
+class StageMaterialSelection(BaseModel):
+    """AI choices for one streamed route stage."""
+
+    choices: list[MaterialChoice]
+
+
 class ZhihuSearchRequest(BaseModel):
     """Parameters accepted by the experimental Zhihu search endpoint."""
 
