@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { KanshanPet } from "@/components/KanshanPet";
 import { KnowledgeGraph } from "@/components/KnowledgeGraph";
@@ -113,7 +113,12 @@ export default function Home() {
   const [stageStatuses, setStageStatuses] =
     useState<Record<RouteStageName, StageStatus>>(initialStageStatuses);
   const [personalization, setPersonalization] = useState<PersonalizationData>({ history: [], candidates: [] });
+  const [recommendationSeed, setRecommendationSeed] = useState(1);
   const routeRef = useRef<LearningRouteResponse | null>(null);
+  const recommendedItems = useMemo(
+    () => recommendations(personalization, recommendationSeed),
+    [personalization, recommendationSeed],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -132,7 +137,10 @@ export default function Home() {
           return;
         }
         setAuth(session);
-        if (session.profile_id) setPersonalization(loadPersonalization(session.profile_id));
+        if (session.profile_id) {
+          setPersonalization(loadPersonalization(session.profile_id));
+          setRecommendationSeed(Date.now());
+        }
       } catch (requestError) {
         if (requestError instanceof Error && requestError.name === "AbortError") return;
         window.location.replace("/login?service=unavailable");
@@ -225,6 +233,15 @@ export default function Home() {
           };
           routeRef.current = nextRoute;
           setRoute(nextRoute);
+          if (auth?.profile_id) {
+            setPersonalization(recordView(auth.profile_id, {
+              url: streamEvent.source.url,
+              title: streamEvent.source.title,
+              topic: streamEvent.source.title,
+              reason: "用于生成学习路线的知乎内容",
+              stage: "source",
+            }));
+          }
           return;
         }
         if (streamEvent.type === "stage") {
@@ -244,6 +261,7 @@ export default function Home() {
         }
         if (streamEvent.type === "recommendations" && auth?.profile_id) {
           setPersonalization(rememberRecommendations(auth.profile_id, streamEvent.items));
+          setRecommendationSeed(Date.now());
         }
       }
 
@@ -351,11 +369,20 @@ export default function Home() {
                 <p className="eyebrow">为你推荐</p>
                 <h2 id="personal-title">沿着最近兴趣继续探索</h2>
               </div>
+              {recommendedItems.length > 0 && (
+                <button
+                  type="button"
+                  className="recommendation-refresh"
+                  onClick={() => setRecommendationSeed(Date.now())}
+                >
+                  换一批
+                </button>
+              )}
             </div>
 
-            {recommendations(personalization).length > 0 && (
+            {recommendedItems.length > 0 && (
               <div className="recommendation-grid">
-                {recommendations(personalization).map((item) => (
+                {recommendedItems.map((item) => (
                   <a key={item.url} href={item.url} target="_blank" rel="noreferrer" onClick={() => openRecommendation(item)}>
                     <small>{item.stage === "related" ? "相关内容" : stageLabels[item.stage]} · {item.topic}</small>
                     <strong>{item.title}</strong>
@@ -363,7 +390,7 @@ export default function Home() {
                 ))}
               </div>
             )}
-            {recommendations(personalization).length === 0 && (
+            {recommendedItems.length === 0 && (
               <div className="personal-empty">
                 <strong>暂无个性化推荐</strong>
                 <span>生成一条学习路线后，这里会出现路线之外的相关知乎内容。</span>

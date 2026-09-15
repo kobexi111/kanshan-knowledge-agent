@@ -113,6 +113,8 @@ main { min-height: 100vh; padding: 48px 24px; }
 .personal-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
 .personal-heading h2 { margin: 4px 0 0; font-size: 24px; }
 .personal-heading > span { color: var(--muted); font-size: 12px; }
+.recommendation-refresh { min-height: 38px; padding: 0 16px; border: 1px solid #b9d2f3; color: var(--primary); background: #eef5ff; font-size: 13px; }
+.recommendation-refresh:hover:not(:disabled) { color: #fff; background: var(--primary); }
 .recommendation-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .recommendation-grid > a {
   display: flex;

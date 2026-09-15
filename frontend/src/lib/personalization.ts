@@ -69,15 +69,51 @@ export function rememberRecommendations(
   return data;
 }
 
-export function recommendations(data: PersonalizationData) {
-  const viewed = new Set(data.history.map((item) => item.url));
-  const interests = data.history.flatMap((item) => `${item.title} ${item.topic}`.toLowerCase().split(/\s+|[，。、《》：:；;（）()]/).filter((word) => word.length > 1));
+function fragments(value: string) {
+  const normalized = value.toLowerCase().replace(/\s+/g, "");
+  const parts = new Set<string>();
+  normalized
+    .split(/[，。、《》：:；;（）()\[\]【】·!?！？—\-_]/)
+    .filter((part) => part.length >= 2)
+    .forEach((part) => parts.add(part));
+  for (let index = 0; index < normalized.length - 1; index += 1) {
+    parts.add(normalized.slice(index, index + 2));
+  }
+  return [...parts];
+}
+
+function seededRandom(value: string, seed: number) {
+  let hash = seed | 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = Math.imul(hash ^ value.charCodeAt(index), 16777619);
+  }
+  return ((hash >>> 0) % 10000) / 10000;
+}
+
+export function recommendations(data: PersonalizationData, seed = 1) {
+  const historySignals = data.history.map((item, index) => ({
+    terms: fragments(`${item.title} ${item.topic}`),
+    weight: Math.max(1, 4 - index * 0.08) + Math.min(item.visits, 4) * 0.35,
+  }));
+
   return data.candidates
-    .filter((item) => !viewed.has(item.url))
-    .map((item) => ({
-      ...item,
-      score: interests.reduce((score, word) => score + (`${item.title} ${item.topic}`.toLowerCase().includes(word) ? 2 : 0), 0) + item.addedAt / 1e13,
-    }))
+    .map((item) => {
+      const candidateText = `${item.title} ${item.topic}`.toLowerCase();
+      const interestScore = historySignals.reduce(
+        (total, signal) => total + signal.terms.reduce(
+          (score, term) => score + (candidateText.includes(term) ? signal.weight : 0),
+          0,
+        ),
+        0,
+      );
+      return {
+        ...item,
+        score:
+          interestScore
+          + seededRandom(item.url, seed) * 8
+          + item.addedAt / 1e13,
+      };
+    })
     .sort((a, b) => b.score - a.score)
     .slice(0, 6);
 }

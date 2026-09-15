@@ -12,6 +12,8 @@ from app.oauth import (
     authorization_url,
     exchange_access_token,
     new_flow_cookie,
+    new_profile_cookie,
+    profile_identifier,
     read_session,
     session_profile_id,
     session_cookie,
@@ -59,6 +61,13 @@ def test_flow_marker_and_encrypted_session(config: OAuthConfig) -> None:
     assert "private" not in profile_id
     assert read_session("invalid", config) is False
     assert session_profile_id("invalid", config) is None
+
+    browser_profile = new_profile_cookie()
+    assert profile_identifier(browser_profile, config) == profile_identifier(
+        browser_profile,
+        config,
+    )
+    assert profile_identifier(None, config) is None
 
 
 def test_exchange_access_token_uses_documented_form(config: OAuthConfig) -> None:

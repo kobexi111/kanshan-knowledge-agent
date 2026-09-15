@@ -22,12 +22,15 @@ from app.models import (
 )
 from app.oauth import (
     FLOW_COOKIE,
+    PROFILE_COOKIE,
     SESSION_COOKIE,
     OAuthConfig,
     OAuthError,
     authorization_url,
     exchange_access_token,
     new_flow_cookie,
+    new_profile_cookie,
+    profile_identifier,
     read_session,
     session_profile_id,
     session_cookie,
@@ -67,7 +70,9 @@ async def health() -> HealthResponse:
 
 
 @app.get("/api/auth/zhihu/login")
-async def zhihu_login() -> RedirectResponse:
+async def zhihu_login(
+    profile_value: str | None = Cookie(default=None, alias=PROFILE_COOKIE),
+) -> RedirectResponse:
     """Start the documented Zhihu authorization-code flow."""
 
     try:
@@ -91,6 +96,16 @@ async def zhihu_login() -> RedirectResponse:
         samesite="lax",
         path="/",
     )
+    if not profile_identifier(profile_value, config):
+        response.set_cookie(
+            PROFILE_COOKIE,
+            new_profile_cookie(),
+            max_age=31_536_000,
+            httponly=True,
+            secure=config.secure_cookie,
+            samesite="lax",
+            path="/",
+        )
     return response
 
 
@@ -115,6 +130,15 @@ async def zhihu_switch_account() -> RedirectResponse:
         FLOW_COOKIE,
         new_flow_cookie(config),
         max_age=600,
+        httponly=True,
+        secure=config.secure_cookie,
+        samesite="lax",
+        path="/",
+    )
+    response.set_cookie(
+        PROFILE_COOKIE,
+        new_profile_cookie(),
+        max_age=31_536_000,
         httponly=True,
         secure=config.secure_cookie,
         samesite="lax",
@@ -161,13 +185,16 @@ async def zhihu_callback(
 @app.get("/api/auth/session", response_model=AuthSessionResponse)
 async def auth_session(
     session_value: str | None = Cookie(default=None, alias=SESSION_COOKIE),
+    profile_value: str | None = Cookie(default=None, alias=PROFILE_COOKIE),
 ) -> AuthSessionResponse:
     """Return only public authorization state, never the OAuth access token."""
 
     try:
         config = OAuthConfig.from_env()
         authenticated = read_session(session_value, config)
-        profile_id = session_profile_id(session_value, config)
+        profile_id = profile_identifier(profile_value, config)
+        if not profile_id:
+            profile_id = session_profile_id(session_value, config)
         configured = True
     except OAuthError:
         authenticated = False

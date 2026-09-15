@@ -17,6 +17,7 @@ AUTHORIZE_URL = "https://openapi.zhihu.com/authorize"
 ACCESS_TOKEN_URL = "https://openapi.zhihu.com/access_token"
 FLOW_COOKIE = "kanshan_oauth_flow"
 SESSION_COOKIE = "kanshan_session"
+PROFILE_COOKIE = "kanshan_profile"
 
 
 class OAuthError(RuntimeError):
@@ -75,6 +76,22 @@ def new_flow_cookie(config: OAuthConfig) -> str:
         {"nonce": secrets.token_urlsafe(24), "expires_at": int(time.time()) + 600},
         config.session_secret,
     )
+
+
+def new_profile_cookie() -> str:
+    """Create an anonymous browser profile that survives ordinary re-login."""
+
+    return secrets.token_urlsafe(32)
+
+
+def profile_identifier(value: str | None, config: OAuthConfig) -> str | None:
+    """Return a non-reversible public identifier for an anonymous profile."""
+
+    if not value or len(value) < 20:
+        return None
+    return hashlib.sha256(
+        f"{config.session_secret}:profile:{value}".encode("utf-8")
+    ).hexdigest()[:24]
 
 
 def validate_flow_cookie(value: str | None, config: OAuthConfig) -> None:
