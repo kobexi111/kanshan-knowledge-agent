@@ -1,5 +1,7 @@
 """API contract tests for the real Zhihu retrieval workflow."""
 
+import asyncio
+
 from fastapi.testclient import TestClient
 
 from app.main import app, get_ai_client, get_zhihu_client
@@ -10,6 +12,7 @@ from app.models import (
     MaterialSelection,
     StageMaterialSelection,
 )
+from app.real_route import _fetch_article_from_search
 
 client = TestClient(app)
 
@@ -240,14 +243,40 @@ def test_generate_route_rejects_invalid_url() -> None:
     assert response.status_code == 422
 
 
-def test_generate_route_reports_unsupported_article() -> None:
-    response = client.post(
-        "/api/routes/generate",
-        json={"url": "https://zhuanlan.zhihu.com/p/123456"},
-    )
+def test_generate_route_reports_article_not_found() -> None:
+    class FakeZhihuClient:
+        async def search(self, *args: object) -> dict[str, list]:
+            return {"Items": []}
 
-    assert response.status_code == 400
-    assert "文章详情能力尚未确认" in response.json()["detail"]
+    app.dependency_overrides[get_zhihu_client] = FakeZhihuClient
+    try:
+        response = client.post(
+            "/api/routes/generate",
+            json={"url": "https://zhuanlan.zhihu.com/p/123456"},
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 502
+    assert "未精确匹配" in response.json()["detail"]
+
+
+def test_article_search_requires_exact_match() -> None:
+    class FakeZhihuClient:
+        async def search(self, *args: object) -> dict[str, list[dict[str, str]]]:
+            return {"Items": [{
+                "ContentType": "Article",
+                "ContentID": "123456",
+                "ContentText": "文章摘要",
+                "Url": "https://zhuanlan.zhihu.com/p/123456?utm_source=openapi",
+            }]}
+
+    item = asyncio.run(_fetch_article_from_search(
+        FakeZhihuClient(),
+        "https://zhuanlan.zhihu.com/p/123456?share_code=test",
+        "123456",
+    ))
+    assert item["ContentText"] == "文章摘要"
 
 
 def test_zhihu_search_endpoint_uses_adapter() -> None:

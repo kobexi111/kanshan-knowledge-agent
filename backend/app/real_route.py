@@ -22,6 +22,7 @@ from app.models import (
 from app.zhihu_client import ZhihuApiError, ZhihuClient
 
 QUESTION_PATH = re.compile(r"^/question/(?P<question_id>\d+)(?:/answer/(?P<answer_id>\d+))?/?$")
+ARTICLE_PATH = re.compile(r"^/p/(?P<article_id>\d+)/?$")
 ROUTE_NOTICE = "知识结构由 AI 分析；所有推荐资料均来自知乎 API 搜索结果。"
 
 
@@ -34,16 +35,26 @@ async def build_real_route(
 
     submitted_url = str(request.url)
     match = QUESTION_PATH.match(urlsplit(submitted_url).path)
-    if not match:
+    article_match = ARTICLE_PATH.match(urlsplit(submitted_url).path)
+    if not match and not article_match:
         raise ValueError(
-            "当前流程仅支持知乎问题或回答链接；文章详情能力尚未确认。"
+            "当前流程支持知乎问题、回答和可被搜索精确匹配的专栏文章。"
         )
-
-    question_url = f"https://www.zhihu.com/question/{match.group('question_id')}"
-    target_answer_id = match.group("answer_id")
-    answers = await _fetch_answers(zhihu_client, question_url, target_answer_id)
-    source_item = _select_source_answer(answers, target_answer_id)
-    source_text = _text(source_item.get("Summary"))
+    if match:
+        question_url = f"https://www.zhihu.com/question/{match.group('question_id')}"
+        target_answer_id = match.group("answer_id")
+        answers = await _fetch_answers(zhihu_client, question_url, target_answer_id)
+        source_item = _select_source_answer(answers, target_answer_id)
+        source_text = _text(source_item.get("Summary"))
+        source_type = "回答" if target_answer_id else "问题"
+    else:
+        source_item = await _fetch_article_from_search(
+            zhihu_client,
+            submitted_url,
+            article_match.group("article_id"),
+        )
+        source_text = _text(source_item.get("ContentText"))
+        source_type = "文章"
     if not source_text:
         raise ZhihuApiError("目标知乎内容没有可供 AI 分析的摘要。")
 
@@ -74,7 +85,6 @@ async def build_real_route(
         "进阶",
     )
 
-    source_type = "回答" if target_answer_id else "问题"
     return GenerateRouteResponse(
         source=SourceContent(
             url=request.url,
@@ -117,20 +127,30 @@ async def stream_real_route(
 
     submitted_url = str(request.url)
     match = QUESTION_PATH.match(urlsplit(submitted_url).path)
-    if not match:
-        raise ValueError("当前流程仅支持知乎问题或回答链接；文章详情能力尚未确认。")
+    article_match = ARTICLE_PATH.match(urlsplit(submitted_url).path)
+    if not match and not article_match:
+        raise ValueError("当前流程支持知乎问题、回答和可被搜索精确匹配的专栏文章。")
 
     yield {"type": "progress", "stage": "prerequisite", "status": "running"}
-    question_url = f"https://www.zhihu.com/question/{match.group('question_id')}"
-    target_answer_id = match.group("answer_id")
-    answers = await _fetch_answers(zhihu_client, question_url, target_answer_id)
-    source_item = _select_source_answer(answers, target_answer_id)
-    source_text = _text(source_item.get("Summary"))
+    if match:
+        question_url = f"https://www.zhihu.com/question/{match.group('question_id')}"
+        target_answer_id = match.group("answer_id")
+        answers = await _fetch_answers(zhihu_client, question_url, target_answer_id)
+        source_item = _select_source_answer(answers, target_answer_id)
+        source_text = _text(source_item.get("Summary"))
+        source_type = "回答" if target_answer_id else "问题"
+    else:
+        source_item = await _fetch_article_from_search(
+            zhihu_client,
+            submitted_url,
+            article_match.group("article_id"),
+        )
+        source_text = _text(source_item.get("ContentText"))
+        source_type = "文章"
     if not source_text:
         raise ZhihuApiError("目标知乎内容没有可供 AI 分析的摘要。")
 
     analysis = await ai_client.analyze_content(source_text)
-    source_type = "回答" if target_answer_id else "问题"
     source = SourceContent(
         url=request.url,
         title=analysis.title,
@@ -264,7 +284,7 @@ async def stream_real_route(
                 ),
                 "stage": item["stage"],
             }
-            for item in recommendation_candidates[:12]
+            for item in recommendation_candidates[:24]
         ],
     }
     yield {"type": "complete"}
@@ -473,6 +493,34 @@ async def _fetch_answers(
     if not answers:
         raise ZhihuApiError("知乎 API 没有返回可用于分析的回答摘要。")
     return answers
+
+
+async def _fetch_article_from_search(
+    client: ZhihuClient,
+    submitted_url: str,
+    article_id: str,
+) -> dict[str, Any]:
+    """Best-effort article lookup that only accepts an exact ID or URL match."""
+
+    for query in (article_id, submitted_url):
+        data = await client.search(query, 10, None)
+        items = data.get("Items") if isinstance(data, dict) else None
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            item_id = _text(item.get("ContentID"))
+            item_url = _text(item.get("Url"))
+            if item_id == article_id or (
+                item_url and _without_query(item_url) == _without_query(submitted_url)
+            ):
+                if _text(item.get("ContentType")).lower() != "article":
+                    continue
+                return item
+    raise ZhihuApiError(
+        "知乎搜索 API 未精确匹配到这篇专栏文章，暂时无法生成路线。"
+    )
 
 
 def _select_source_answer(

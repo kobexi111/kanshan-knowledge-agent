@@ -114,10 +114,14 @@ export default function Home() {
     useState<Record<RouteStageName, StageStatus>>(initialStageStatuses);
   const [personalization, setPersonalization] = useState<PersonalizationData>({ history: [], candidates: [] });
   const [recommendationSeed, setRecommendationSeed] = useState(1);
+  const [excludedRecommendationUrls, setExcludedRecommendationUrls] = useState<string[]>([]);
   const routeRef = useRef<LearningRouteResponse | null>(null);
   const recommendedItems = useMemo(
-    () => recommendations(personalization, recommendationSeed),
-    [personalization, recommendationSeed],
+    () => recommendations(personalization, recommendationSeed, excludedRecommendationUrls),
+    [personalization, recommendationSeed, excludedRecommendationUrls],
+  );
+  const canRefreshRecommendations = personalization.candidates.some(
+    (item) => !recommendedItems.some((current) => current.url === item.url),
   );
 
   useEffect(() => {
@@ -261,6 +265,7 @@ export default function Home() {
         }
         if (streamEvent.type === "recommendations" && auth?.profile_id) {
           setPersonalization(rememberRecommendations(auth.profile_id, streamEvent.items));
+          setExcludedRecommendationUrls([]);
           setRecommendationSeed(Date.now());
         }
       }
@@ -369,11 +374,14 @@ export default function Home() {
                 <p className="eyebrow">为你推荐</p>
                 <h2 id="personal-title">沿着最近兴趣继续探索</h2>
               </div>
-              {recommendedItems.length > 0 && (
+              {recommendedItems.length > 0 && canRefreshRecommendations && (
                 <button
                   type="button"
                   className="recommendation-refresh"
-                  onClick={() => setRecommendationSeed(Date.now())}
+                  onClick={() => {
+                    setExcludedRecommendationUrls(recommendedItems.map((item) => item.url));
+                    setRecommendationSeed(Date.now());
+                  }}
                 >
                   换一批
                 </button>

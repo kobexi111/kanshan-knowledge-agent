@@ -90,13 +90,19 @@ function seededRandom(value: string, seed: number) {
   return ((hash >>> 0) % 10000) / 10000;
 }
 
-export function recommendations(data: PersonalizationData, seed = 1) {
+export function recommendations(
+  data: PersonalizationData,
+  seed = 1,
+  excludedUrls: string[] = [],
+) {
+  const excluded = new Set(excludedUrls);
   const historySignals = data.history.map((item, index) => ({
     terms: fragments(`${item.title} ${item.topic}`),
     weight: Math.max(1, 4 - index * 0.08) + Math.min(item.visits, 4) * 0.35,
   }));
 
   return data.candidates
+    .filter((item) => !excluded.has(item.url))
     .map((item) => {
       const candidateText = `${item.title} ${item.topic}`.toLowerCase();
       const interestScore = historySignals.reduce(
